@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "BariGo Pasajero",
+    "slug": "barigo-pasajero",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/barigo-icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/barigo-icon.png",
+        "backgroundColor": "#143E35"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.barigo.pasajero",
+      "permissions": ["ACCESS_COARSE_LOCATION", "ACCESS_FINE_LOCATION"]
+    },
+    "web": {
+      "favicon": "./assets/barigo-icon.png"
+    },
+    "scheme": "barigo",
+    "backgroundColor": "#F5F4EE",
+    "description": "BariGo Pasajero · Bariloche y alrededores",
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "BariGo usa tu ubicación para elegir el punto de partida de tu viaje."
+        }
+      ]
+    ]
+  }
+}

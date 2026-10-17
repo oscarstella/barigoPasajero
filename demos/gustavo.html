@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="es">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>BariGo · Gustavo de prueba</title
+  ><style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: system-ui;
+      margin: 0;
+      background: #f5f4ee;
+      color: #143e35;
+    }
+    main {
+      max-width: 720px;
+      margin: auto;
+      padding: 24px;
+    }
+    h1 {
+      letter-spacing: -1px;
+    }
+    button {
+      padding: 13px 17px;
+      border: 0;
+      border-radius: 12px;
+      background: #143e35;
+      color: white;
+      cursor: pointer;
+      font: inherit;
+      margin: 5px 4px 5px 0;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: wait;
+    }
+    .light {
+      background: #d8f36a;
+      color: #143e35;
+    }
+    section {
+      padding: 20px;
+      border-radius: 20px;
+      background: white;
+      margin: 16px 0;
+    }
+    small {
+      color: #597567;
+      line-height: 1.5;
+    }
+    #status {
+      white-space: pre-wrap;
+    }
+    #error {
+      color: #a33225;
+    }
+    #messages {
+      font-size: 14px;
+    }
+    label {
+      display: block;
+      padding: 12px 0;
+    }
+    input {
+      margin-right: 8px;
+    }
+    li {
+      padding: 7px 0;
+    }
+    code {
+      word-break: break-word;
+    }
+  </style>
+  <main>
+    <small>BARIGO · HERRAMIENTA DE DESARROLLO</small>
+    <h1>Hola, Gustavo.</h1>
+    <p>
+      Conductor de prueba. Las acciones cambian solicitudes de la demo; no hay
+      pagos ni viajes reales. La app Android del conductor será una aplicación
+      separada.
+    </p>
+    <p id="error" role="alert"></p>
+    <section>
+      <h2>1. Tu pase de prueba</h2>
+      <p>
+        12 horas acumuladas de uso, pausable. Vence a las 24 horas de la compra.
+      </p>
+      <p id="price"></p>
+      <label
+        ><input id="consent" type="checkbox" />Acepto la tarifa mostrada para
+        esta compra simulada, sin cobro real.</label
+      ><button id="buy">Simular compra de pase</button
+      ><button id="activate" class="light">Activar</button
+      ><button id="pause">Pausar</button>
+      <p id="pass"></p>
+    </section>
+    <section>
+      <h2>2. Solicitudes de Oscar</h2>
+      <button id="refresh" class="light">Buscar solicitudes</button>
+      <div id="trips"></div>
+    </section>
+    <section>
+      <h2>3. Viaje seleccionado</h2>
+      <div id="selected">Todavía no elegiste un viaje.</div>
+      <div id="actions"></div>
+      <div id="messages"></div>
+      <div id="navigation"></div>
+    </section>
+    <p>
+      <small
+        >El GPS real requiere permiso, ubicación actual y la futura app
+        conductor. Esta consola permite reproducir una posición sobre el
+        recorrido y consultar las instrucciones por calles, siempre como
+        simulación.</small
+      >
+    </p>
+  </main>
+  <script>
+    let token,
+      pricing,
+      activeTrip,
+      routeIndex = 0,
+      pickupRoute = null,
+      lock = false,
+      pass;
+    const $ = (id) => document.getElementById(id);
+    const money = (n) =>
+      new Intl.NumberFormat("es-AR", {
+        style: "currency",
+        currency: "ARS",
+        maximumFractionDigits: 0,
+      }).format(n);
+    async function api(path, method = "GET", body) {
+      const r = await fetch("/api" + path, {
+        method,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: "Bearer " + token } : {}),
+        },
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+      const v = await r.json();
+      if (!r.ok) throw Error(v.error || "Operación fallida");
+      return v;
+    }
+    async function run(fn) {
+      if (lock) return;
+      lock = true;
+      $("error").textContent = "";
+      document.querySelectorAll("button").forEach((b) => (b.disabled = true));
+      try {
+        await fn();
+      } catch (e) {
+        $("error").textContent = e.message;
+      } finally {
+        lock = false;
+        document
+          .querySelectorAll("button")
+          .forEach((b) => (b.disabled = false));
+      }
+    }
+    function button(label, fn) {
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.onclick = () => run(fn);
+      return b;
+    }
+    async function refreshPass() {
+      pass = (await api("/passes/current")).pass;
+      $("pass").textContent = pass
+        ? `Estado: ${pass.status} · Restan ${(pass.remainingMs / 3600000).toFixed(2)} h · Vence ${new Date(pass.expiresAt).toLocaleString("es-AR")}`
+        : "Todavía no compraste un pase.";
+    }
+    async function list() {
+      await refreshPass();
+      const { trips } = await api("/driver/available-trips");
+      $("trips").replaceChildren();
+      if (!trips.length) {
+        $("trips").textContent =
+          "No hay solicitudes pendientes. Pedí un viaje desde BariGo Pasajero.";
+        return;
+      }
+      for (const trip of trips) {
+        const p = document.createElement("p");
+        p.textContent = `${trip.pickup.label} → ${trip.destination.label} · ${money(trip.estimate.amount)} · ${trip.payment === "cash" ? "Efectivo" : "Transferencia"}`;
+        p.append(
+          button("Aceptar solicitud", async () => {
+            activeTrip = (
+              await api("/trips/" + trip.id + "/accept", "POST", {})
+            ).trip;
+            routeIndex = 0;
+            renderTrip();
+            await list();
+          }),
+        );
+        $("trips").append(p);
+      }
+    }
+    function renderTrip() {
+      if (!activeTrip) return;
+      const t = activeTrip;
+      $("selected").textContent =
+        `${t.pickup.label} → ${t.destination.label} · Estado: ${t.status}`;
+      $("actions").replaceChildren();
+      const transitions = {
+        accepted: ["arriving", "Ir a buscar a Oscar"],
+        arriving: ["arrived", "Avisar: llegué al punto de partida"],
+        arrived: ["in_progress", "Iniciar viaje de prueba"],
+        in_progress: ["completed", "Finalizar viaje de prueba"],
+      };
+      const next = transitions[t.status];
+      if (next)
+        $("actions").append(
+          button(next[1], async () => {
+            activeTrip = (
+              await api("/trips/" + t.id + "/status", "POST", {
+                status: next[0],
+              })
+            ).trip;
+            renderTrip();
+          }),
+        );
+      if (!["completed", "cancelled"].includes(t.status)) {
+        $("actions").append(
+          button("Simular siguiente posición GPS", async () => {
+            const coordinates = (
+              ["accepted", "arriving", "arrived"].includes(t.status) &&
+              pickupRoute
+                ? pickupRoute
+                : t.route
+            ).coordinates;
+            routeIndex = Math.min(
+              coordinates.length - 1,
+              routeIndex + Math.max(1, Math.floor(coordinates.length / 12)),
+            );
+            const [lng, lat] = coordinates[routeIndex];
+            activeTrip = (
+              await api("/trips/" + t.id + "/location", "POST", { lat, lng })
+            ).trip;
+            renderTrip();
+          }),
+        );
+        $("actions").append(
+          button("Cancelar viaje de prueba", async () => {
+            if (confirm("¿Cancelar este viaje de prueba?")) {
+              activeTrip = (await api("/trips/" + t.id + "/cancel", "POST", {}))
+                .trip;
+              renderTrip();
+            }
+          }),
+        );
+      }
+      $("messages").replaceChildren();
+      for (const msg of t.messages || []) {
+        const p = document.createElement("p");
+        p.textContent = msg.text;
+        $("messages").append(p);
+      }
+      $("navigation").replaceChildren();
+      if (!["completed", "cancelled"].includes(t.status)) {
+        $("navigation").append(
+          button("Simular ubicación y calcular ruta hasta Oscar", async () => {
+            activeTrip = (
+              await api("/trips/" + t.id + "/location", "POST", {
+                lat: t.pickup.lat - 0.008,
+                lng: t.pickup.lng - 0.008,
+              })
+            ).trip;
+            pickupRoute = (await api("/trips/" + t.id + "/pickup-route")).route;
+            routeIndex = 0;
+            renderTrip();
+          }),
+        );
+      }
+      if (t.pickup.source === "gps") {
+        const p = document.createElement("p");
+        p.textContent =
+          "Punto GPS de Oscar · precisión aproximada ±" +
+          Math.round(t.pickup.accuracyMeters || 0) +
+          " m";
+        $("selected").append(p);
+      }
+      const h = document.createElement("h3");
+      h.textContent =
+        pickupRoute && ["accepted", "arriving", "arrived"].includes(t.status)
+          ? "Recorrido por calles hasta Oscar"
+          : "Recorrido por calles al destino";
+      $("navigation").append(h);
+      const ol = document.createElement("ol");
+      for (const step of (pickupRoute &&
+      ["accepted", "arriving", "arrived"].includes(t.status)
+        ? pickupRoute
+        : t.route
+      ).steps || []) {
+        const li = document.createElement("li");
+        li.textContent =
+          step.instruction + " · " + Math.round(step.distanceMeters) + " m";
+        ol.append(li);
+      }
+      $("navigation").append(ol);
+    }
+    $("buy").onclick = () =>
+      run(async () => {
+        if (!$("consent").checked)
+          throw Error(
+            "Revisá y aceptá explícitamente la tarifa antes de simular la compra.",
+          );
+        await api("/passes/demo-purchase", "POST", {
+          acceptDemo: true,
+          currency: pricing.passCurrency,
+          amount: pricing.passAmount,
+          requestId: "gustavo-demo-" + Date.now(),
+        });
+        $("consent").checked = false;
+        await refreshPass();
+      });
+    $("activate").onclick = () =>
+      run(async () => {
+        await api("/passes/activate", "POST", {});
+        await refreshPass();
+      });
+    $("pause").onclick = () =>
+      run(async () => {
+        await api("/passes/pause", "POST", {});
+        await refreshPass();
+      });
+    $("refresh").onclick = () => run(list);
+    run(async () => {
+      const session = await api("/auth/demo", "POST", {
+        name: "Gustavo",
+        role: "driver",
+      });
+      token = session.token;
+      pricing = (await api("/config")).pricing;
+      $("price").textContent =
+        "Tarifa vigente: " +
+        money(pricing.passAmount) +
+        " ARS (importe fijo de prueba).";
+      await refreshPass();
+      const history = (await api("/trips")).trips;
+      activeTrip = history.find(
+        (t) => !["completed", "cancelled"].includes(t.status),
+      );
+      renderTrip();
+    });
+    setInterval(() => {
+      if (!lock && token)
+        run(async () => {
+          await refreshPass();
+          if (activeTrip) {
+            activeTrip = (await api("/trips/" + activeTrip.id)).trip;
+            renderTrip();
+          }
+        });
+    }, 10000);
+  </script>
+</html>
