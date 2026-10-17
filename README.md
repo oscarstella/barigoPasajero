@@ -4,7 +4,7 @@ Aplicación Android de viajes para Bariloche y alrededores, hecha con React Nati
 
 ## Probar en Expo Go
 
-Requiere Node.js 24 LTS y Expo Go actualizado en Android.
+Requiere Node.js 24 LTS y Expo Go compatible con SDK 58 en Android. Al 17/10/2026, Expo Go 58 todavía no está en Google Play: la app de la tienda puede indicar que debe actualizarse aunque no exista actualización. Usar el APK oficial indicado por `npx expo-go url android 58`, también disponible para el emulador de Android Studio. Esto no demuestra que el teléfono sea viejo.
 
 ```sh
 npm ci
